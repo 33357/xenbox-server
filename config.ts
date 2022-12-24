@@ -5,7 +5,7 @@ dotenv.config();
 export const config: { [chain: number]: Config } = {
   1: {
     provider: process.env.provider
-  },
+  }
 };
 
 export const port = 8000;

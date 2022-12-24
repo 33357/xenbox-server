@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "ts-node ./src/server.ts",
     "start": "pm2 start npm -n xenbox-server -o ./logs/xenbox-server-out.log -e ./logs/xenbox-server-err.log -- run dev",
+    "restart": "git pull && yarn && pm2 restart xenbox-server",
     "format:fix": "yarn prettier --write \"**/*.{ts,js}\""
   },
   "devDependencies": {
