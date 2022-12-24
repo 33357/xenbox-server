@@ -1,6 +1,6 @@
 import express from 'express';
 import http from 'http';
-import { port,config } from '../config';
+import { port, config } from '../config';
 import { Response } from 'express-serve-static-core';
 import { log } from './libs';
 import { XenBoxClient, DeploymentInfo } from 'xenbox-sdk';
