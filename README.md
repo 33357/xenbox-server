@@ -1,12 +1,6 @@
-# web3Robot
+# xenbox-server
 
-## start bsc
-
-```bash
-yarn start
-```
-
-## start bscTest
+## start
 
 ```bash
 yarn start
