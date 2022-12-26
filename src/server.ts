@@ -3,7 +3,7 @@ import http from 'http';
 import { port, config } from '../config';
 import { Response } from 'express-serve-static-core';
 import { log } from './libs';
-import { XenBoxClient, DeploymentInfo } from 'xenbox-sdk';
+import { XenClient, XenBoxClient, DeploymentInfo } from 'xenbox-sdk';
 import { providers } from 'ethers';
 
 const provider = new providers.JsonRpcProvider(config[1].provider);
@@ -11,6 +11,7 @@ const xenBox = new XenBoxClient(
   provider,
   DeploymentInfo[1]['XenBox'].proxyAddress
 );
+const xen = new XenClient(provider);
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -19,6 +20,7 @@ const tokenMap: {
     name: string;
     description: string;
     image: string;
+    time: number;
     attributes: any[];
   };
 } = {};
@@ -34,58 +36,31 @@ app.all('*', function (req, res, next) {
 app.get('/token/*', async function (req, res) {
   try {
     const tokenId = req.path.replace('/token/', '');
-    if (!tokenMap[tokenId]) {
+    if (
+      !tokenMap[tokenId] ||
+      new Date().getTime() - tokenMap[tokenId].time > 24 * 60 * 60 * 1000
+    ) {
       const token = await xenBox.tokenMap(tokenId);
       const account = token.end.sub(token.start);
-      if (account.eq(10)) {
-        tokenMap[tokenId] = {
-          name: 'XenBox 10',
-          description: '10 xen account in this box',
-          image: 'https://xenbox.store/1.png',
-          attributes: [
-            {
-              trait_type: 'Account',
-              value: 10
-            }
-          ]
-        };
-      } else if (account.eq(20)) {
-        tokenMap[tokenId] = {
-          name: 'XenBox 20',
-          description: '20 xen account in this box',
-          image: 'https://xenbox.store/2.png',
-          attributes: [
-            {
-              trait_type: 'Account',
-              value: 20
-            }
-          ]
-        };
-      } else if (account.eq(50)) {
-        tokenMap[tokenId] = {
-          name: 'XenBox 50',
-          description: '50 xen account in this box',
-          image: 'https://xenbox.store/3.png',
-          attributes: [
-            {
-              trait_type: 'Account',
-              value: 50
-            }
-          ]
-        };
-      } else if (account.eq(100)) {
-        tokenMap[tokenId] = {
-          name: 'XenBox 100',
-          description: '100 xen account in this box',
-          image: 'https://xenbox.store/4.png',
-          attributes: [
-            {
-              trait_type: 'Account',
-              value: 100
-            }
-          ]
-        };
-      }
+      const proxyAddress = await xenBox.getProxyAddress(token.start);
+      const xenData = await xen.userMints(proxyAddress);
+      const term = xenData.term.toNumber();
+      tokenMap[tokenId] = {
+        name: `XenBox ${account.toNumber()}`,
+        description: `${account.toNumber()} xen account in this box`,
+        time: new Date().getTime(),
+        image: `https://xenbox.store/box${account.toNumber()}.png`,
+        attributes: [
+          {
+            trait_type: 'Account',
+            value: account.toNumber()
+          },
+          {
+            trait_type: 'Term',
+            value: term
+          }
+        ]
+      };
     }
     res.send(JSON.stringify(tokenMap[tokenId]));
   } catch (error) {
