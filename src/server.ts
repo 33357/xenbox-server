@@ -48,20 +48,26 @@ app.get('/token/*', async function (req, res) {
       !tokenMap[tokenId] ||
       new Date().getTime() - tokenMap[tokenId].lastTime > 60 * 60 * 1000
     ) {
-      const token = await xenBox.tokenMap(tokenId);
-      const account = token.end.sub(token.start).toNumber();
+      const [token, fee] = await Promise.all([
+        xenBox.tokenMap(tokenId),
+        xenBox.fee()
+      ]);
       const proxy = await xenBox.getProxyAddress(token.start);
-      const mint = bigToString(
-        await xenBoxHelper.calculateMintReward(proxy),
+      const [mint, userMints] = await Promise.all([
+        xenBoxHelper.calculateMintReward(proxy),
+        xen.userMints(proxy)
+      ]);
+      const mints = bigToString(
+        mint.mul(10000 - fee.toNumber()).div(10000),
         18
       );
-      const userMints = await xen.userMints(proxy);
       const time = new Date(userMints.maturityTs.toNumber() * 1000);
+      const account = token.end.sub(token.start).toNumber();
       tokenMap[tokenId] = {
         name: `XenBox ${account}`,
         description: `${account} xen account in this box`,
         lastTime: new Date().getTime(),
-        image: getSvg(account, mint, time),
+        image: getSvg(account, mints, time),
         attributes: [
           {
             trait_type: 'Account',
