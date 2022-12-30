@@ -57,12 +57,12 @@ app.get('/token/*', async function (req, res) {
         xenBoxHelper.calculateMintReward(proxy),
         xen.userMints(proxy)
       ]);
+      const account = token.end.sub(token.start).toNumber();
       const mints = bigToString(
-        mint.mul(10000 - fee.toNumber()).div(10000),
+        mint.mul(account).mul(10000 - fee.toNumber()).div(10000),
         18
       ).split('.')[0];
       const time = new Date(userMints.maturityTs.toNumber() * 1000);
-      const account = token.end.sub(token.start).toNumber();
       tokenMap[tokenId] = {
         name: `XenBox ${account}`,
         description: `${account} xen account in this box`,
