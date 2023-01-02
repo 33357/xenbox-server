@@ -26,7 +26,7 @@ export class Request {
     log(uri);
     (async function main() {
       try {
-        const browser = await puppeteer.launch();
+        const browser = await puppeteer.launch({args: ['--no-sandbox']});
         const [page] = await browser.pages();
 
         await page.goto(uri, { waitUntil: 'networkidle0' });
