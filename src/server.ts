@@ -119,7 +119,7 @@ app.get('/api/rank/*', async function (req, res) {
 
 httpServer.listen(port, async () => {
   log(`http://127.0.0.1:${port}`);
-  run();
+  // run();
 });
 
 async function run() {
