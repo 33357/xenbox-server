@@ -119,16 +119,16 @@ app.get('/api/rank/*', async function (req, res) {
 
 httpServer.listen(port, async () => {
   log(`http://127.0.0.1:${port}`);
-  // run();
+  run();
 });
 
 async function run() {
   while (true) {
     log(`update`);
-    const totalToken = (await xenBox.totalToken()).toNumber();
-    for (let i = 0; i < totalToken; i++) {
-      await request.update(xenBox.address(), i);
-    }
+    // const totalToken = (await xenBox.totalToken()).toNumber();
+    // for (let i = 0; i < totalToken; i++) {
+      await request.update(xenBox.address(), 0);
+    // }
     await sleep(60 * 60 * 1000);
   }
 }
