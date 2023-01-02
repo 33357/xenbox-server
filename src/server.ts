@@ -48,9 +48,9 @@ app.all('*', function (req, res, next) {
   next();
 });
 
-app.get('/token/*', async function (req, res) {
+app.get('/api/token/*', async function (req, res) {
   try {
-    const tokenId = Number(req.path.replace('/token/', ''));
+    const tokenId = Number(req.path.replace('/api/token/', ''));
     if (
       !tokenMap[tokenId] ||
       new Date().getTime() - tokenMap[tokenId].lastTime > 60 * 60 * 1000
@@ -92,9 +92,9 @@ app.get('/token/*', async function (req, res) {
   }
 });
 
-app.get('/rank/*', async function (req, res) {
+app.get('/api/rank/*', async function (req, res) {
   try {
-    const day = Number(req.path.replace('/rank/', ''));
+    const day = Number(req.path.replace('/api/rank/', ''));
     if (
       !rankMap[day] ||
       new Date().getTime() - rankMap[day].lastTime > 24 * 60 * 60 * 1000
