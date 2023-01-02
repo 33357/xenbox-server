@@ -127,8 +127,7 @@ async function run() {
     log(`update`);
     const totalToken = (await xenBox.totalToken()).toNumber();
     for (let i = 0; i < totalToken; i++) {
-      const res = await request.update(xenBox.address(), i);
-      log(res)
+      await request.update(xenBox.address(), i);
     }
     await sleep(60 * 60 * 1000);
   }
