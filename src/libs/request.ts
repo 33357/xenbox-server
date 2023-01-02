@@ -18,6 +18,8 @@ export class Request {
     log(uri)
     if (this.page) {
       await this.page.goto(uri, { waitUntil: 'networkidle0' });
+      const bodyHTML = await this.page.evaluate(() => document.body.innerHTML);
+      console.log(bodyHTML);
     }
   }
 }
