@@ -15,6 +15,7 @@ export class Request {
 
   async update(address: string, tokenId: number): Promise<any> {
     const uri = `https://api.opensea.io/api/v1/asset/${address}/${tokenId}/?force_update=true`;
+    log(uri)
     if (this.page) {
       await this.page.goto(uri, { waitUntil: 'networkidle0' });
     }
