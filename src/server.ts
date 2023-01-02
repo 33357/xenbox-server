@@ -123,8 +123,8 @@ httpServer.listen(port, async () => {
 });
 
 async function run() {
-  log(`start run`);
   while (true) {
+    log(`update`);
     const totalToken = (await xenBox.totalToken()).toNumber();
     for (let i = 0; i < totalToken; i++) {
       await request.update(xenBox.address(), i);
