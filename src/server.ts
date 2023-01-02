@@ -33,6 +33,13 @@ const tokenMap: {
   };
 } = {};
 
+const rankMap: {
+  [day: number]: {
+    rank: number;
+    lastTime: number;
+  };
+} = {};
+
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Headers', 'Content-Type');
@@ -80,6 +87,30 @@ app.get('/token/*', async function (req, res) {
       };
     }
     res.send(tokenMap[tokenId]);
+  } catch (error) {
+    res.send(error);
+  }
+});
+
+app.get('/rank/*', async function (req, res) {
+  try {
+    const day = Number(req.path.replace('/rank/', ''));
+    if (
+      !rankMap[day] ||
+      new Date().getTime() - rankMap[day].lastTime > 24 * 60 * 60 * 1000
+    ) {
+      const [thisRank, thisBlock] = await Promise.all([
+        xen.globalRank(),
+        provider.getBlockNumber()
+      ]);
+      const beforeBlock = thisBlock - (day * 24 * 60 * 60) / 12;
+      const beforeRank = await xen.globalRank({ blockTag: beforeBlock });
+      rankMap[day] = {
+        rank: thisRank.toNumber() - beforeRank.toNumber(),
+        lastTime: new Date().getTime()
+      };
+    }
+    res.send(rankMap[day]);
   } catch (error) {
     res.send(error);
   }
