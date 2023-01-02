@@ -10,7 +10,9 @@ export function getSvg(account: number, mint: string, time: Date) {
               stroke-width="0" fill="#ffffff">${mint}</text>
           <text transform="matrix(0.7 0 0 0.8 65 30)" stroke="#000" xml:space="preserve"
               text-anchor="start" font-family="Noto Sans JP" font-size="30" id="svg_3" y="210" x="120"
-              stroke-width="0" fill="#ffffff">${time.toLocaleDateString('chinese')}</text>
+              stroke-width="0" fill="#ffffff">${time.toLocaleDateString(
+                'chinese'
+              )}</text>
           <text transform="matrix(0.7 0 0 0.8 65 30)" stroke="#000" xml:space="preserve"
               text-anchor="start" font-family="Noto Sans JP" font-size="30" id="svg_5" y="240" x="140"
               stroke-width="0" fill="#ffffff">${time.toLocaleTimeString(

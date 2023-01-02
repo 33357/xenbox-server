@@ -1,4 +1,4 @@
-import { BigNumber } from "ethers";
+import { BigNumber } from 'ethers';
 
 export function sleep(time: number) {
   return new Promise((resolve) => setTimeout(resolve, time));
@@ -19,10 +19,10 @@ export function bigToString(big: BigNumber, decimals: number) {
     }
     str = `0.${str}`;
   }
-  while (str[str.length - 1] == "0") {
+  while (str[str.length - 1] == '0') {
     str = str.substring(0, str.length - 1);
   }
-  if (str[str.length - 1] == ".") {
+  if (str[str.length - 1] == '.') {
     str = str.substring(0, str.length - 1);
   }
   return str;

@@ -1,7 +1,7 @@
 import express from 'express';
 import http from 'http';
 import { port, config } from '../config';
-import { bigToString, log, getSvg } from './libs';
+import { bigToString, log, getSvg, sleep, Request } from './libs';
 import {
   XenBoxClient,
   XenClient,
@@ -20,6 +20,7 @@ const xenBoxHelper = new XenBoxHelperClient(
   DeploymentInfo[1]['XenBoxHelper'].proxyAddress
 );
 const xen = new XenClient(provider);
+const request = new Request();
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -118,4 +119,16 @@ app.get('/api/rank/*', async function (req, res) {
 
 httpServer.listen(port, async () => {
   log(`http://127.0.0.1:${port}`);
+  run();
 });
+
+async function run() {
+  log(`start run`);
+  while (true) {
+    const totalToken = (await xenBox.totalToken()).toNumber();
+    for (let i = 0; i < totalToken; i++) {
+      await request.update(xenBox.address(), i);
+    }
+    await sleep(60 * 60 * 1000);
+  }
+}
