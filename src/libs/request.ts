@@ -6,9 +6,9 @@ export class Request {
   page?: Page;
 
   async load() {
-    const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
-    const [page] = await browser.pages();
-    await page.setUserAgent(
+    this.browser = await puppeteer.launch({ args: ['--no-sandbox'] });
+    [this.page] = await this.browser.pages();
+    await this.page.setUserAgent(
       'Mozilla/5.0 (Windows NT 5.1; rv:5.0) Gecko/20100101 Firefox/5.0'
     );
   }
