@@ -11,7 +11,7 @@ export class Request {
               reject(error);
             }
             try {
-              resolve(JSON.parse(body));
+              resolve(body);
             } catch (error) {
               reject(error);
             }
