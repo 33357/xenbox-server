@@ -78,24 +78,24 @@ app.get('/api/token/*', async function (req, res) {
         xenBoxHelper.calculateMintReward(proxy),
         xen.userMints(proxy)
       ]);
-      const account = token.end.sub(token.start).toNumber();
+      const amount = token.end.sub(token.start).toNumber();
       const mints = bigToString(
         mint
-          .mul(account)
+          .mul(amount)
           .mul(10000 - fee.toNumber())
           .div(10000),
         18
       ).split('.')[0];
       const time = new Date(userMints.maturityTs.toNumber() * 1000);
       tokenMap[tokenId] = {
-        name: `XenBox ${account}`,
-        description: `${account} xen account in this box`,
+        name: `XenBox ${amount}`,
+        description: `${amount} xen account in this box`,
         lastTime: new Date().getTime(),
-        image: getSvg(account, mints, time),
+        image: getSvg(amount, mints, time),
         attributes: [
           {
             trait_type: 'Account',
-            value: account
+            value: amount
           }
         ]
       };
