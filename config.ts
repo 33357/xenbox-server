@@ -2,14 +2,26 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export const config: { [chain: number]: Config } = {
-  1: {
-    provider: process.env.provider
-  }
+export const CONFIG: Config = {
+  PROVIDER: {
+    1: {
+      HTTP_PROVIDER: process.env.ETH_PROVIDER
+    },
+    56: {
+      HTTP_PROVIDER: process.env.BSC_PROVIDER
+    },
+    137: {
+      HTTP_PROVIDER: process.env.POL_PROVIDER
+    }
+  },
+  PORT: 8000
 };
 
-export const port = 8000;
-
 export interface Config {
-  provider: any;
+  PROVIDER: {
+    [CHAIN_ID: number]: {
+      HTTP_PROVIDER: any
+    }
+  },
+  PORT: number
 }

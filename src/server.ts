@@ -1,57 +1,61 @@
 import express from 'express';
 import http from 'http';
-import { port, config } from '../config';
+import { CONFIG } from '../config';
 import { bigToString, log, getSvg, sleep, Request } from './libs';
 import {
   XenBoxClient,
-  XenBox2Client,
   XenClient,
-  XenBoxHelperClient,
   DeploymentInfo
-} from 'xenbox-contract-sdk';
-import { BigNumber, providers } from 'ethers';
+} from 'xenbox-sdk';
+import {
+  XenBoxUpgradeableClient,
+  XenBoxHelperClient,
+  DeploymentInfo as DeploymentInfo2
+} from 'xenbox2-contract-sdk';
+import { providers } from 'ethers';
 
-const provider = new providers.JsonRpcProvider(config[1].provider);
+const chainIdList = Object.keys(CONFIG.PROVIDER).map(e => { return Number(e) });
+const providerMap: { [chainId: number]: providers.Provider } = {};
+const xenBoxUpgradeableMap: { [chainId: number]: XenBoxUpgradeableClient } = {};
+const xenBoxHelperMap: { [chainId: number]: XenBoxHelperClient } = {};
+chainIdList.forEach((chainId) => {
+  providerMap[chainId] = new providers.JsonRpcProvider(CONFIG.PROVIDER[chainId].HTTP_PROVIDER);
+  xenBoxUpgradeableMap[chainId] = new XenBoxUpgradeableClient(
+    providerMap[chainId],
+    DeploymentInfo2[chainId]['XenBoxUpgradeable'].proxyAddress
+  );
+  xenBoxHelperMap[chainId] = new XenBoxHelperClient(
+    providerMap[chainId],
+    DeploymentInfo2[chainId]['XenBoxHelper'].proxyAddress
+  );
+})
 const xenBox = new XenBoxClient(
-  provider,
+  providerMap[1],
   DeploymentInfo[1]['XenBox'].proxyAddress
 );
-const xenBox2 = new XenBox2Client(
-  provider,
-  DeploymentInfo[1]['XenBox2'].proxyAddress
-);
-const xenBoxHelper = new XenBoxHelperClient(
-  provider,
-  DeploymentInfo[1]['XenBoxHelper'].proxyAddress
-);
-const xen = new XenClient(provider);
+const xen = new XenClient(providerMap[1]);
 const request = new Request();
 const app = express();
 const httpServer = http.createServer(app);
 
 const tokenMap: {
-  [tokenId: number]: {
-    name: string;
-    description: string;
-    image: string;
-    lastTime: number;
-    attributes: any[];
-  };
-} = {};
-const token2Map: {
-  [tokenId: number]: {
-    name: string;
-    description: string;
-    image: string;
-    lastTime: number;
-    attributes: any[];
-  };
+  [chainId: number]: {
+    [tokenId: number]: {
+      name: string;
+      description: string;
+      image: string;
+      lastTime: number;
+      attributes: any[];
+    };
+  }
 } = {};
 const rankMap: {
-  [day: number]: {
-    rank: number;
-    lastTime: number;
-  };
+  [chainId: number]: {
+    [day: number]: {
+      rank: number;
+      lastTime: number;
+    };
+  }
 } = {};
 
 app.all('*', function (req, res, next) {
@@ -64,34 +68,64 @@ app.all('*', function (req, res, next) {
 
 app.get('/api/token/*', async function (req, res) {
   try {
-    const tokenId = Number(req.path.replace('/api/token/', ''));
+    const [chainId, tokenId] = req.path.replace('/api/token/', '').split('/').map(e => {
+      return Number(e);
+    });
     if (
-      !tokenMap[tokenId] ||
-      new Date().getTime() - tokenMap[tokenId].lastTime > 60 * 60 * 1000
+      !tokenMap[chainId][tokenId] ||
+      new Date().getTime() - tokenMap[chainId][tokenId].lastTime > 60 * 60 * 1000
     ) {
-      const [token, fee] = await Promise.all([
-        xenBox.tokenMap(tokenId),
-        xenBox.fee()
-      ]);
-      const proxy = await xenBox.getProxyAddress(token.start);
-      const [mint, userMints] = await Promise.all([
-        xenBoxHelper.calculateMintReward(proxy),
-        xen.userMints(proxy)
-      ]);
-      const amount = token.end.sub(token.start).toNumber();
-      const mints = bigToString(
-        mint
-          .mul(amount)
-          .mul(10000 - fee.toNumber())
-          .div(10000),
-        18
-      ).split('.')[0];
-      const time = new Date(userMints.maturityTs.toNumber() * 1000);
-      tokenMap[tokenId] = {
-        name: `XenBox ${amount}`,
+      let userMints;
+      let mint;
+      let fee;
+      let amount;
+      if (chainId == 0) {
+        const [token, _fee] = await Promise.all([
+          xenBox.tokenMap(tokenId),
+          xenBox.fee()
+        ]);
+        fee = _fee;
+        const proxy = await xenBox.getProxyAddress(token.start);
+        [mint, userMints] = await Promise.all([
+          xenBoxHelperMap[1].calculateMintReward(proxy),
+          xen.userMints(proxy)
+        ]);
+        amount = token.end.sub(token.start).toNumber();
+      } else {
+        const [token, fee100, fee50, fee20, fee10] = await Promise.all([
+          xenBoxUpgradeableMap[chainId].tokenMap(tokenId),
+          xenBoxUpgradeableMap[chainId].fee100(),
+          xenBoxUpgradeableMap[chainId].fee50(),
+          xenBoxUpgradeableMap[chainId].fee20(),
+          xenBoxUpgradeableMap[chainId].fee10()
+        ]);
+        const proxy = await xenBoxUpgradeableMap[chainId].proxyAddress(tokenId);
+        [mint, userMints] = await Promise.all([
+          xenBoxHelperMap[chainId].calculateMintReward(proxy),
+          xenBoxUpgradeableMap[chainId].userMints(tokenId)
+        ]);
+        amount = token.end - token.start;
+        if (amount == 100) {
+          fee = fee100;
+        } else if (amount == 50) {
+          fee = fee50;
+        } else if (amount == 20) {
+          fee = fee20;
+        } else {
+          fee = fee10;
+        }
+      }
+      tokenMap[chainId][tokenId] = {
+        name: `XenBox${chainId > 0 ? '2' : ''} ${amount}`,
         description: `${amount} xen account in this box`,
         lastTime: new Date().getTime(),
-        image: getSvg(amount, mints, time),
+        image: getSvg(amount, bigToString(
+          mint
+            .mul(amount)
+            .mul(10000 - fee.toNumber())
+            .div(10000),
+          18
+        ).split('.')[0], new Date(userMints.maturityTs.toNumber() * 1000)),
         attributes: [
           {
             trait_type: 'Account',
@@ -106,77 +140,22 @@ app.get('/api/token/*', async function (req, res) {
   }
 });
 
-app.get('/api/token2/*', async function (req, res) {
-  try {
-    const tokenId = Number(req.path.replace('/api/token2/', ''));
-    if (
-      !token2Map[tokenId] ||
-      new Date().getTime() - token2Map[tokenId].lastTime > 60 * 60 * 1000
-    ) {
-      const [token, fee100, fee50, fee20, fee10] = await Promise.all([
-        xenBox2.tokenMap(tokenId),
-        xenBox2.fee100(),
-        xenBox2.fee50(),
-        xenBox2.fee20(),
-        xenBox2.fee10()
-      ]);
-      const proxy = await xenBox2.getProxyAddress(BigNumber.from(token.start));
-      const [mint, userMints] = await Promise.all([
-        xenBoxHelper.calculateMintReward(proxy),
-        xen.userMints(proxy)
-      ]);
-      const amount = token.end - token.start;
-      let fee;
-      if (amount == 100) {
-        fee = fee100;
-      } else if (amount == 50) {
-        fee = fee50;
-      } else if (amount == 20) {
-        fee = fee20;
-      } else {
-        fee = fee10;
-      }
-      const mints = bigToString(
-        mint
-          .mul(amount)
-          .mul(10000 - fee.toNumber())
-          .div(10000),
-        18
-      ).split('.')[0];
-      const time = new Date(userMints.maturityTs.toNumber() * 1000);
-      token2Map[tokenId] = {
-        name: `XenBox2 ${amount}`,
-        description: `${amount} xen account in this box`,
-        lastTime: new Date().getTime(),
-        image: getSvg(amount, mints, time),
-        attributes: [
-          {
-            trait_type: 'Account',
-            value: amount
-          }
-        ]
-      };
-    }
-    res.send(token2Map[tokenId]);
-  } catch (error) {
-    res.send(error);
-  }
-});
-
 app.get('/api/rank/*', async function (req, res) {
   try {
-    const day = Number(req.path.replace('/api/rank/', ''));
+    const [chainId, day] = req.path.replace('/api/rank/', '').split('/').map(e => {
+      return Number(e);
+    });
     if (
-      !rankMap[day] ||
-      new Date().getTime() - rankMap[day].lastTime > 24 * 60 * 60 * 1000
+      !rankMap[chainId][day] ||
+      new Date().getTime() - rankMap[chainId][day].lastTime > 24 * 60 * 60 * 1000
     ) {
       const [thisRank, thisBlock] = await Promise.all([
         xen.globalRank(),
-        provider.getBlockNumber()
+        providerMap[chainId].getBlockNumber()
       ]);
       const beforeBlock = thisBlock - (day * 24 * 60 * 60) / 12;
       const beforeRank = await xen.globalRank({ blockTag: beforeBlock });
-      rankMap[day] = {
+      rankMap[chainId][day] = {
         rank: thisRank.toNumber() - beforeRank.toNumber(),
         lastTime: new Date().getTime()
       };
@@ -187,23 +166,23 @@ app.get('/api/rank/*', async function (req, res) {
   }
 });
 
-httpServer.listen(port, async () => {
-  log(`http://127.0.0.1:${port}`);
+httpServer.listen(CONFIG.PORT, async () => {
+  log(`http://127.0.0.1:${CONFIG.PORT}`);
   await request.load();
   run();
 });
 
 async function run() {
   while (true) {
-    const totalToken = (await xenBox.totalToken()).toNumber();
-    for (let i = 0; i < totalToken; i++) {
+    const totalToken0 = (await xenBox.totalToken()).toNumber();
+    for (let i = 0; i < totalToken0; i++) {
       await request.update(xenBox.address(), i);
       await sleep(100);
     }
 
-    const totalToken2 = (await xenBox2.totalToken()).toNumber();
-    for (let i = 0; i < totalToken2; i++) {
-      await request.update(xenBox2.address(), i);
+    const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
+    for (let i = 0; i < totalToken; i++) {
+      await request.update(xenBoxUpgradeableMap[1].address(), i);
       await sleep(100);
     }
     log(`run end`);
