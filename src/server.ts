@@ -180,11 +180,11 @@ async function run() {
       await sleep(100);
     }
 
-    const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
-    for (let i = 0; i < totalToken; i++) {
-      await request.update(xenBoxUpgradeableMap[1].address(), i);
-      await sleep(100);
-    }
+    // const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
+    // for (let i = 0; i < totalToken; i++) {
+    //   await request.update(xenBoxUpgradeableMap[1].address(), i);
+    //   await sleep(100);
+    // }
     log(`run end`);
     await sleep(60 * 60 * 1000);
   }
