@@ -14,30 +14,13 @@ import {
 } from 'xenbox2-contract-sdk';
 import { providers } from 'ethers';
 
+const request = new Request();
+const app = express();
+const httpServer = http.createServer(app);
 const chainIdList = Object.keys(CONFIG.PROVIDER).map(e => { return Number(e) });
 const providerMap: { [chainId: number]: providers.Provider } = {};
 const xenBoxUpgradeableMap: { [chainId: number]: XenBoxUpgradeableClient } = {};
 const xenBoxHelperMap: { [chainId: number]: XenBoxHelperClient } = {};
-chainIdList.forEach((chainId) => {
-  providerMap[chainId] = new providers.JsonRpcProvider(CONFIG.PROVIDER[chainId].HTTP_PROVIDER);
-  xenBoxUpgradeableMap[chainId] = new XenBoxUpgradeableClient(
-    providerMap[chainId],
-    DeploymentInfo2[chainId]['XenBoxUpgradeable'].proxyAddress
-  );
-  xenBoxHelperMap[chainId] = new XenBoxHelperClient(
-    providerMap[chainId],
-    DeploymentInfo2[chainId]['XenBoxHelper'].proxyAddress
-  );
-})
-const xenBox = new XenBoxClient(
-  providerMap[1],
-  DeploymentInfo[1]['XenBox'].proxyAddress
-);
-const xen = new XenClient(providerMap[1]);
-const request = new Request();
-const app = express();
-const httpServer = http.createServer(app);
-
 const tokenMap: {
   [chainId: number]: {
     [tokenId: number]: {
@@ -48,7 +31,7 @@ const tokenMap: {
       attributes: any[];
     };
   }
-} = {};
+} = { 0: {} };
 const rankMap: {
   [chainId: number]: {
     [day: number]: {
@@ -56,7 +39,25 @@ const rankMap: {
       lastTime: number;
     };
   }
-} = {};
+} = { 0: {} };
+chainIdList.forEach((chainId) => {
+  providerMap[chainId] = new providers.JsonRpcProvider(CONFIG.PROVIDER[chainId].HTTP_PROVIDER);
+  xenBoxUpgradeableMap[chainId] = new XenBoxUpgradeableClient(
+    providerMap[chainId],
+    DeploymentInfo2[chainId]['XenBoxUpgradeable'].proxyAddress
+  );
+  xenBoxHelperMap[chainId] = new XenBoxHelperClient(
+    providerMap[chainId],
+    DeploymentInfo2[chainId]['XenBoxHelper'].proxyAddress
+  );
+  tokenMap[chainId] = {};
+  rankMap[chainId] = {}
+})
+const xenBox = new XenBoxClient(
+  providerMap[1],
+  DeploymentInfo[1]['XenBox'].proxyAddress
+);
+const xen = new XenClient(providerMap[1]);
 
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
@@ -71,6 +72,7 @@ app.get('/api/token/*', async function (req, res) {
     const [chainId, tokenId] = req.path.replace('/api/token/', '').split('/').map(e => {
       return Number(e);
     });
+    log(chainId, tokenId)
     if (
       !tokenMap[chainId][tokenId] ||
       new Date().getTime() - tokenMap[chainId][tokenId].lastTime > 60 * 60 * 1000
@@ -134,7 +136,7 @@ app.get('/api/token/*', async function (req, res) {
         ]
       };
     }
-    res.send(tokenMap[tokenId]);
+    res.send(tokenMap[chainId][tokenId]);
   } catch (error) {
     res.send(error);
   }
@@ -160,7 +162,7 @@ app.get('/api/rank/*', async function (req, res) {
         lastTime: new Date().getTime()
       };
     }
-    res.send(rankMap[day]);
+    res.send(rankMap[chainId][day]);
   } catch (error) {
     res.send(error);
   }
