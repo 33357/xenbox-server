@@ -151,9 +151,13 @@ app.get('/api/token/*', async function (req, res) {
 
 app.get('/api/rank/*', async function (req, res) {
   try {
-    const [chainId, day] = req.path.replace('/api/rank/', '').split('/').map(e => {
+    let [chainId, day] = req.path.replace('/api/rank/', '').split('/').map(e => {
       return Number(e);
     });
+    if (chainId == 30) {
+      chainId = 1;
+      day = 30;
+    }
     if (
       !rankMap[chainId][day] ||
       new Date().getTime() - rankMap[chainId][day].lastTime > 24 * 60 * 60 * 1000
