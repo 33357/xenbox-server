@@ -72,7 +72,6 @@ app.get('/api/token/*', async function (req, res) {
     const [chainId, tokenId] = req.path.replace('/api/token/', '').split('/').map(e => {
       return Number(e);
     });
-    log(chainId, tokenId)
     if (
       !tokenMap[chainId][tokenId] ||
       new Date().getTime() - tokenMap[chainId][tokenId].lastTime > 60 * 60 * 1000
