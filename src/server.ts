@@ -4,13 +4,14 @@ import { CONFIG } from '../config';
 import { bigToString, log, getSvg, sleep, Request } from './libs';
 import {
   XenBoxClient,
-  XenClient,
-  DeploymentInfo
+  XenClient as XenClient0,
+  DeploymentInfo as DeploymentInfo0
 } from 'xenbox-sdk';
 import {
   XenBoxUpgradeableClient,
   XenBoxHelperClient,
-  DeploymentInfo as DeploymentInfo2
+  XenClient,
+  DeploymentInfo
 } from 'xenbox2-contract-sdk';
 import { providers } from 'ethers';
 
@@ -21,6 +22,7 @@ const chainIdList = Object.keys(CONFIG.PROVIDER).map(e => { return Number(e) });
 const providerMap: { [chainId: number]: providers.Provider } = {};
 const xenBoxUpgradeableMap: { [chainId: number]: XenBoxUpgradeableClient } = {};
 const xenBoxHelperMap: { [chainId: number]: XenBoxHelperClient } = {};
+const xenMap: { [chainId: number]: XenClient } = {};
 const tokenMap: {
   [chainId: number]: {
     [tokenId: number]: {
@@ -44,20 +46,26 @@ chainIdList.forEach((chainId) => {
   providerMap[chainId] = new providers.JsonRpcProvider(CONFIG.PROVIDER[chainId].HTTP_PROVIDER);
   xenBoxUpgradeableMap[chainId] = new XenBoxUpgradeableClient(
     providerMap[chainId],
-    DeploymentInfo2[chainId]['XenBoxUpgradeable'].proxyAddress
+    DeploymentInfo[chainId]['XenBoxUpgradeable'].proxyAddress
   );
   xenBoxHelperMap[chainId] = new XenBoxHelperClient(
     providerMap[chainId],
-    DeploymentInfo2[chainId]['XenBoxHelper'].proxyAddress
+    DeploymentInfo[chainId]['XenBoxHelper'].proxyAddress
+  );
+  xenMap[chainId] = new XenClient(
+    providerMap[chainId],
+    DeploymentInfo[chainId]['Xen'].proxyAddress
   );
   tokenMap[chainId] = {};
   rankMap[chainId] = {}
 })
 const xenBox = new XenBoxClient(
   providerMap[1],
-  DeploymentInfo[1]['XenBox'].proxyAddress
+  DeploymentInfo0[1]['XenBox'].proxyAddress
 );
-const xen = new XenClient(providerMap[1]);
+const xen0 = new XenClient0(
+  providerMap[1]
+);
 
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
@@ -89,7 +97,7 @@ app.get('/api/token/*', async function (req, res) {
         const proxy = await xenBox.getProxyAddress(token.start);
         [mint, userMints] = await Promise.all([
           xenBoxHelperMap[1].calculateMintReward(proxy),
-          xen.userMints(proxy)
+          xen0.userMints(proxy)
         ]);
         amount = token.end.sub(token.start).toNumber();
       } else {
@@ -151,11 +159,11 @@ app.get('/api/rank/*', async function (req, res) {
       new Date().getTime() - rankMap[chainId][day].lastTime > 24 * 60 * 60 * 1000
     ) {
       const [thisRank, thisBlock] = await Promise.all([
-        xen.globalRank(),
+        xenMap[chainId].globalRank(),
         providerMap[chainId].getBlockNumber()
       ]);
       const beforeBlock = thisBlock - (day * 24 * 60 * 60) / 12;
-      const beforeRank = await xen.globalRank({ blockTag: beforeBlock });
+      const beforeRank = await xenMap[chainId].globalRank({ blockTag: beforeBlock });
       rankMap[chainId][day] = {
         rank: thisRank.toNumber() - beforeRank.toNumber(),
         lastTime: new Date().getTime()

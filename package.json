@@ -25,7 +25,7 @@
     "puppeteer": "^19.4.1",
     "ts-node": "^10.2.1",
     "typescript": "^4.4.3",
-    "xenbox2-contract-sdk": "^0.0.2",
+    "xenbox2-contract-sdk": "^0.0.5",
     "xenbox-sdk": "^0.0.10"
   }
 }
