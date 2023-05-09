@@ -10,6 +10,9 @@ export const CONFIG: Config = {
     56: {
       HTTP_PROVIDER: process.env.BSC_PROVIDER
     },
+    66: {
+      HTTP_PROVIDER: process.env.OKC_PROVIDER
+    },
     137: {
       HTTP_PROVIDER: process.env.POL_PROVIDER
     }

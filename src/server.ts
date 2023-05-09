@@ -181,8 +181,8 @@ app.get('/api/rank/*', async function (req, res) {
 
 httpServer.listen(CONFIG.PORT, async () => {
   log(`http://127.0.0.1:${CONFIG.PORT}`);
-  await request.load();
-  run();
+  // await request.load();
+  // run();
 });
 
 async function run() {
