@@ -15,7 +15,7 @@ import {
 } from 'xenbox2-contract-sdk';
 import { providers } from 'ethers';
 
-const request = new Request();
+// const request = new Request();
 const app = express();
 const httpServer = http.createServer(app);
 const chainIdList = Object.keys(CONFIG.PROVIDER).map(e => { return Number(e) });
@@ -181,17 +181,17 @@ app.get('/api/rank/*', async function (req, res) {
 
 httpServer.listen(CONFIG.PORT, async () => {
   log(`http://127.0.0.1:${CONFIG.PORT}`);
-  await request.load();
+  // await request.load();
   run();
 });
 
 async function run() {
   while (true) {
-    const totalToken0 = (await xenBox.totalToken()).toNumber();
-    for (let i = 0; i < totalToken0; i++) {
-      await request.update(xenBox.address(), i);
-      await sleep(100);
-    }
+    // const totalToken0 = (await xenBox.totalToken()).toNumber();
+    // for (let i = 0; i < totalToken0; i++) {
+    //   await request.update(xenBox.address(), i);
+    //   await sleep(100);
+    // }
 
     // const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
     // for (let i = 0; i < totalToken; i++) {
