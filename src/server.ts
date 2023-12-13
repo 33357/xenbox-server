@@ -182,23 +182,23 @@ app.get('/api/rank/*', async function (req, res) {
 httpServer.listen(CONFIG.PORT, async () => {
   log(`http://127.0.0.1:${CONFIG.PORT}`);
   // await request.load();
-  run();
+  // run();
 });
 
-async function run() {
-  while (true) {
-    // const totalToken0 = (await xenBox.totalToken()).toNumber();
-    // for (let i = 0; i < totalToken0; i++) {
-    //   await request.update(xenBox.address(), i);
-    //   await sleep(100);
-    // }
+// async function run() {
+//   while (true) {
+//     // const totalToken0 = (await xenBox.totalToken()).toNumber();
+//     // for (let i = 0; i < totalToken0; i++) {
+//     //   await request.update(xenBox.address(), i);
+//     //   await sleep(100);
+//     // }
 
-    // const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
-    // for (let i = 0; i < totalToken; i++) {
-    //   await request.update(xenBoxUpgradeableMap[1].address(), i);
-    //   await sleep(100);
-    // }
-    log(`run end`);
-    await sleep(60 * 60 * 1000);
-  }
-}
+//     // const totalToken = (await xenBoxUpgradeableMap[1].totalToken()).toNumber();
+//     // for (let i = 0; i < totalToken; i++) {
+//     //   await request.update(xenBoxUpgradeableMap[1].address(), i);
+//     //   await sleep(100);
+//     // }
+//     log(`run end`);
+//     await sleep(60 * 60 * 1000);
+//   }
+// }
