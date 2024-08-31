@@ -23,8 +23,8 @@ export const CONFIG: Config = {
 export interface Config {
   PROVIDER: {
     [CHAIN_ID: number]: {
-      HTTP_PROVIDER: any
-    }
-  },
-  PORT: number
+      HTTP_PROVIDER: any;
+    };
+  };
+  PORT: number;
 }

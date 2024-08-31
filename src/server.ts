@@ -18,7 +18,9 @@ import { providers } from 'ethers';
 // const request = new Request();
 const app = express();
 const httpServer = http.createServer(app);
-const chainIdList = Object.keys(CONFIG.PROVIDER).map(e => { return Number(e) });
+const chainIdList = Object.keys(CONFIG.PROVIDER).map((e) => {
+  return Number(e);
+});
 const providerMap: { [chainId: number]: providers.Provider } = {};
 const xenBoxUpgradeableMap: { [chainId: number]: XenBoxUpgradeableClient } = {};
 const xenBoxHelperMap: { [chainId: number]: XenBoxHelperClient } = {};
@@ -32,7 +34,7 @@ const tokenMap: {
       lastTime: number;
       attributes: any[];
     };
-  }
+  };
 } = { 0: {} };
 const rankMap: {
   [chainId: number]: {
@@ -40,10 +42,12 @@ const rankMap: {
       rank: number;
       lastTime: number;
     };
-  }
+  };
 } = { 0: {} };
 chainIdList.forEach((chainId) => {
-  providerMap[chainId] = new providers.JsonRpcProvider(CONFIG.PROVIDER[chainId].HTTP_PROVIDER);
+  providerMap[chainId] = new providers.JsonRpcProvider(
+    CONFIG.PROVIDER[chainId].HTTP_PROVIDER
+  );
   xenBoxUpgradeableMap[chainId] = new XenBoxUpgradeableClient(
     providerMap[chainId],
     DeploymentInfo[chainId]['XenBoxUpgradeable'].proxyAddress
@@ -57,15 +61,13 @@ chainIdList.forEach((chainId) => {
     DeploymentInfo[chainId]['Xen'].proxyAddress
   );
   tokenMap[chainId] = {};
-  rankMap[chainId] = {}
-})
+  rankMap[chainId] = {};
+});
 const xenBox = new XenBoxClient(
   providerMap[1],
   DeploymentInfo0[1]['XenBox'].proxyAddress
 );
-const xen0 = new XenClient0(
-  providerMap[1]
-);
+const xen0 = new XenClient0(providerMap[1]);
 
 app.all('*', function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*');
@@ -77,12 +79,16 @@ app.all('*', function (req, res, next) {
 
 app.get('/api/token/*', async function (req, res) {
   try {
-    const [chainId, tokenId] = req.path.replace('/api/token/', '').split('/').map(e => {
-      return Number(e);
-    });
+    const [chainId, tokenId] = req.path
+      .replace('/api/token/', '')
+      .split('/')
+      .map((e) => {
+        return Number(e);
+      });
     if (
       !tokenMap[chainId][tokenId] ||
-      new Date().getTime() - tokenMap[chainId][tokenId].lastTime > 60 * 60 * 1000
+      new Date().getTime() - tokenMap[chainId][tokenId].lastTime >
+        60 * 60 * 1000
     ) {
       let userMints;
       let mint;
@@ -128,13 +134,17 @@ app.get('/api/token/*', async function (req, res) {
         name: `XenBox${chainId > 0 ? '2' : ''} ${amount}`,
         description: `${amount} xen account in this box`,
         lastTime: new Date().getTime(),
-        image: getSvg(amount, bigToString(
-          mint
-            .mul(amount)
-            .mul(10000 - fee.toNumber())
-            .div(10000),
-          18
-        ).split('.')[0], new Date(userMints.maturityTs.toNumber() * 1000)),
+        image: getSvg(
+          amount,
+          bigToString(
+            mint
+              .mul(amount)
+              .mul(10000 - fee.toNumber())
+              .div(10000),
+            18
+          ).split('.')[0],
+          new Date(userMints.maturityTs.toNumber() * 1000)
+        ),
         attributes: [
           {
             trait_type: 'Account',
@@ -151,23 +161,29 @@ app.get('/api/token/*', async function (req, res) {
 
 app.get('/api/rank/*', async function (req, res) {
   try {
-    let [chainId, day] = req.path.replace('/api/rank/', '').split('/').map(e => {
-      return Number(e);
-    });
+    let [chainId, day] = req.path
+      .replace('/api/rank/', '')
+      .split('/')
+      .map((e) => {
+        return Number(e);
+      });
     if (chainId == 30) {
       chainId = 1;
       day = 30;
     }
     if (
       !rankMap[chainId][day] ||
-      new Date().getTime() - rankMap[chainId][day].lastTime > 24 * 60 * 60 * 1000
+      new Date().getTime() - rankMap[chainId][day].lastTime >
+        24 * 60 * 60 * 1000
     ) {
       const [thisRank, thisBlock] = await Promise.all([
         xenMap[chainId].globalRank(),
         providerMap[chainId].getBlockNumber()
       ]);
       const beforeBlock = thisBlock - (day * 24 * 60 * 60) / 12;
-      const beforeRank = await xenMap[chainId].globalRank({ blockTag: beforeBlock });
+      const beforeRank = await xenMap[chainId].globalRank({
+        blockTag: beforeBlock
+      });
       rankMap[chainId][day] = {
         rank: thisRank.toNumber() - beforeRank.toNumber(),
         lastTime: new Date().getTime()
