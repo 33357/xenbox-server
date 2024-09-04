@@ -1,6 +1,9 @@
-import { ethers } from 'ethers';
+import { BigNumber, ethers } from 'ethers';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
+import axios, { AxiosInstance } from 'axios';
+import axiosRetry from 'axios-retry';
+import { keccak256, RLP } from 'ethers/lib/utils';
 
 const abi: Array<any> = [
   {
@@ -36,11 +39,71 @@ const abi: Array<any> = [
 const provider = new ethers.providers.WebSocketProvider(
   'wss://eth-mainnet.blastapi.io/a251a0bd-88af-4cb7-9b0e-26d5fe664a63'
 );
+const axiosInstance: AxiosInstance = axios.create({
+  baseURL:
+    //'https://eth-mainnet.blastapi.io/a251a0bd-88af-4cb7-9b0e-26d5fe664a63',
+    'https://eth.merkle.io',
+  timeout: 30000
+});
+axiosRetry(axiosInstance, {
+  retries: 3,
+  retryDelay: (retryCount: number) => {
+    console.log(`重试次数: ${retryCount}`);
+    return retryCount * 1000;
+  },
+  retryCondition: () => {
+    return true;
+  }
+});
+const urlStep = 400;
 const contractAddress: string = '0x06450dEe7FD2Fb8E39061434BAbCFC05599a6Fb8';
 const contract = new ethers.Contract(contractAddress, abi, provider);
 const step = 500;
 const xenStartBlockNumber = 15704871;
 let db: Database | undefined;
+
+async function openDB() {
+  db = await open({
+    filename: './event.db',
+    driver: sqlite3.Database
+  });
+  await db.exec(`
+      CREATE TABLE IF NOT EXISTS rankEvents (
+        blockNumber INTEGER NOT NULL,
+        rank INTEGER NOT NULL,
+        term INTEGER NOT NULL,
+        amount INTEGER NOT NULL,
+        transactionHash TEXT NOT NULL UNIQUE
+      )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS mintEvents (
+      blockNumber INTEGER NOT NULL,
+      rewardAmount INTEGER NOT NULL,
+      amount INTEGER NOT NULL,
+      transactionHash TEXT NOT NULL UNIQUE
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS transactions (
+      hash TEXT NOT NULL UNIQUE,
+      fromAddr TEXT NOT NULL,
+      toAddr TEXT NOT NULL,
+      gas INTEGER NOT NULL,
+      gasPrice INTEGER NOT NULL
+    )
+  `);
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS blocks (
+      number INTEGER NOT NULL UNIQUE,
+      baseFeePerGas INTEGER NOT NULL,
+      gasUsed INTEGER NOT NULL,
+      timestamp INTEGER NOT NULL,
+      transactions INTEGER NOT NULL,
+      miner TEXT NOT NULL
+    )
+  `);
+}
 
 async function getAllEvents() {
   const currentBlockNumber = await provider.getBlockNumber();
@@ -70,18 +133,6 @@ async function getAllEvents() {
         targetBlockNumber
       )
     ]);
-    // const transactionFromMap = await getTransactionFromMap([
-    //   ...rankEvents.map((rankEvent) => rankEvent.transactionHash),
-    //   ...mintEvents.map((mintEvent) => mintEvent.transactionHash)
-    // ]);
-    // const transactionIdMap = await getTransactionIdMap([
-    //   ...rankEvents.map((rankEvent) => rankEvent.transactionHash),
-    //   ...mintEvents.map((mintEvent) => mintEvent.transactionHash)
-    // ]);
-    // const userIdMap = await getUserIdMap([
-    //   ...rankEvents.map((rankEvent) => rankEvent.args!.user),
-    //   ...mintEvents.map((mintEvent) => mintEvent.args!.user)
-    // ]);
 
     const _mintEvents: {
       blockNumber: number;
@@ -137,7 +188,6 @@ async function getAllEvents() {
       }
     });
     await insertRankEvents(_rankEvents);
-
     console.log(
       `startBlockNumber: ${startBlockNumber}, startBlockNumber: ${targetBlockNumber}, percent: ${
         startBlockNumber - xenStartBlockNumber
@@ -208,40 +258,109 @@ async function insertMintEvents(
   });
 }
 
-async function openDB() {
-  db = await open({
-    filename: './event.db',
-    driver: sqlite3.Database
+async function insertTransactions(
+  transactions: {
+    hash: string;
+    from: string;
+    to: string;
+    gas: number;
+    gasPrice: number;
+  }[]
+) {
+  await db!.run('BEGIN TRANSACTION');
+  const stmt = await db!.prepare(
+    'INSERT INTO transactions (hash, fromAddr, toAddr, gas, gasPrice) VALUES (?, ?, ?, ?, ?)'
+  );
+  transactions.forEach(async (transaction) => {
+    await stmt.run(
+      transaction.hash,
+      transaction.from,
+      transaction.to,
+      transaction.gas,
+      transaction.gasPrice
+    );
   });
-  await db.exec(`
-      CREATE TABLE IF NOT EXISTS rankEvents (
-        blockNumber INTEGER NOT NULL,
-        rank INTEGER NOT NULL,
-        term INTEGER NOT NULL,
-        amount INTEGER NOT NULL,
-        transactionHash TEXT NOT NULL UNIQUE
-      )
+  await stmt.finalize();
+  await db!.run('COMMIT', (err: any) => {
+    if (err) {
+      console.error('Error during commit', err.message);
+    } else {
+      console.log('Data inserted successfully');
+    }
+  });
+}
+
+async function getAllTransactions() {
+  const rankEvents = await db!.all(`
+    SELECT r.*
+    FROM rankEvents r
+    LEFT JOIN transactions t ON r.transactionHash = t.hash
+    WHERE t.hash IS NULL;
   `);
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS mintEvents (
-      blockNumber INTEGER NOT NULL,
-      rewardAmount INTEGER NOT NULL,
-      amount INTEGER NOT NULL,
-      transactionHash TEXT NOT NULL UNIQUE
-    )
+  await getTransactions(rankEvents);
+  const mintEvents = await db!.all(`
+    SELECT m.*
+    FROM mintEvents m
+    LEFT JOIN transactions t ON m.transactionHash = t.hash
+    WHERE t.hash IS NULL;
   `);
-  // await db.exec(`
-  //   CREATE TABLE IF NOT EXISTS users (
-  //     id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //     address TEXT NOT NULL UNIQUE
-  //   )
-  // `);
-  // await db.exec(`
-  //   CREATE TABLE IF NOT EXISTS transactions (
-  //     id INTEGER PRIMARY KEY AUTOINCREMENT,
-  //     hash TEXT NOT NULL UNIQUE
-  //   )
-  // `);
+  await getTransactions(mintEvents);
+}
+
+async function getTransactions(events: { transactionHash: string }[]) {
+  for (let i = 0; i < events.length;) {
+    const datas: any[] = [];
+    for (let j = 0; j < urlStep && i + j < events.length; j++) {
+      datas.push({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'eth_getTransactionByHash',
+        params: [events[i + j].transactionHash]
+      });
+    }
+    try {
+      const transactions: any[] = (await axiosInstance.post('', datas)).data;
+      await insertTransactions(
+        transactions.map((transaction) => {
+          return {
+            hash: transaction.result.hash,
+            from: transaction.result.from,
+            to: transaction.result.to
+              ? transaction.result.to
+              : computeAddress(
+                  transaction.result.from,
+                  transaction.result.nonce
+                ),
+            gas: BigNumber.from(transaction.result.gas).toNumber(),
+            gasPrice: BigNumber.from(transaction.result.gasPrice).toNumber()
+          };
+        })
+      );
+    } catch (error) {
+      console.log(error);
+      continue;
+    }
+    console.log(`percent: ${i}/${events.length}`);
+    i += urlStep;
+  }
+}
+
+async function getBlocks(blockNumbers: number[]) {
+  const skip = 100;
+  const blocks = [];
+  for (let i = 0; i < blockNumbers.length; i += skip) {
+    const datas: any[] = [];
+    for (let j = 0; j < skip && i + j < blockNumbers.length; j++) {
+      datas.push({
+        jsonrpc: '2.0',
+        id: 0,
+        method: 'eth_getBlockByNumber',
+        params: [`0x${blockNumbers[i].toString(16)}`, false]
+      });
+    }
+    blocks.push(...(await axios.post('', datas)).data);
+  }
+  return blocks;
 }
 
 async function logDay() {
@@ -307,98 +426,22 @@ async function logDay() {
   });
 }
 
+function computeAddress(senderAddress: string, nonce: string): string {
+  if (nonce.length % 2 == 1) {
+    nonce = nonce.replace('0x', '0x0');
+  }
+  const encoded = RLP.encode([senderAddress, nonce]);
+  const hash = keccak256(encoded);
+  const contractAddress = '0x' + hash.slice(26);
+  return contractAddress;
+}
+
 async function main() {
   await openDB();
-  await getAllEvents();
-  await logDay();
+  // await getAllEvents();
+  await getAllTransactions();
+  // await logDay();
   await db!.close();
 }
 
 main();
-
-// async function insertUsers(addresses: string[]) {
-//   await db!.run('BEGIN TRANSACTION');
-//   const stmt = await db!.prepare(
-//     'INSERT OR IGNORE INTO users (address) VALUES (?)'
-//   );
-//   addresses.forEach(async (address) => {
-//     await stmt.run(address);
-//   });
-//   await stmt.finalize();
-//   await db!.run('COMMIT', (err: any) => {
-//     if (err) {
-//       console.error('Error during commit', err.message);
-//     } else {
-//       console.log('Data inserted successfully');
-//     }
-//   });
-// }
-
-// async function insertTransactions(transactionHashs: string[]) {
-//   await db!.run('BEGIN TRANSACTION');
-//   const stmt = await db!.prepare(
-//     'INSERT OR IGNORE INTO transactions (hash) VALUES (?)'
-//   );
-//   transactionHashs.forEach(async (transactionHash) => {
-//     await stmt.run(transactionHash);
-//   });
-//   await stmt.finalize();
-//   await db!.run('COMMIT', (err: any) => {
-//     if (err) {
-//       console.error('Error during commit', err.message);
-//     } else {
-//       console.log('Data inserted successfully');
-//     }
-//   });
-// }
-
-// async function getUserIdMap(addresses: string[]) {
-//   await insertUsers(addresses);
-//   const users = await db!.all(
-//     `SELECT id, address FROM users WHERE address IN (${addresses
-//       .map(() => '?')
-//       .join(',')})`,
-//     addresses
-//   );
-//   const userIdMap: { [address: string]: number } = {};
-//   users.forEach((user) => {
-//     userIdMap[user.address] = user.id;
-//   });
-//   return userIdMap;
-// }
-
-// async function getTransactionIdMap(transactionHashs: string[]) {
-//   await insertTransactions(transactionHashs);
-//   const transactions = await db!.all(
-//     `SELECT id, hash FROM transactions WHERE hash IN (${transactionHashs
-//       .map(() => '?')
-//       .join(',')})`,
-//     transactionHashs
-//   );
-//   const transactionIdMap: { [hash: string]: number } = {};
-//   transactions.forEach((transaction) => {
-//     transactionIdMap[transaction.hash] = transaction.id;
-//   });
-//   return transactionIdMap;
-// }
-
-// async function getTransactionFromMap(transactionHashs: string[]) {
-//   transactionHashs = transactionHashs.filter((value, index, self) => {
-//     return self.indexOf(value) === index;
-//   });
-//   const step = 5;
-//   const transactionFromMap: { [transactionHash: string]: string } = {};
-//   for (let i = 0; i < transactionHashs.length; i += step) {
-//     const promises = [];
-//     for (let j = 0; i + j < transactionHashs.length; j++) {
-//       promises.push(
-//         (await provider.getTransaction(transactionHashs[i + j])).from
-//       );
-//     }
-//     const froms = await Promise.all(promises);
-//     froms.forEach((from, index) => {
-//       transactionFromMap[transactionHashs[i + index]] = from;
-//     });
-//   }
-//   return transactionFromMap;
-// }
