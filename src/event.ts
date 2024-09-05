@@ -2,8 +2,8 @@ import { BigNumber, ethers } from 'ethers';
 import sqlite3 from 'sqlite3';
 import { open, Database } from 'sqlite';
 import axios, { AxiosInstance } from 'axios';
-import axiosRetry from 'axios-retry';
 import { keccak256, RLP } from 'ethers/lib/utils';
+import { log } from './libs';
 
 const abi: Array<any> = [
   {
@@ -45,16 +45,7 @@ const axiosInstance: AxiosInstance = axios.create({
     'https://eth.merkle.io',
   timeout: 30000
 });
-axiosRetry(axiosInstance, {
-  retries: 3,
-  retryDelay: (retryCount: number) => {
-    console.log(`重试次数: ${retryCount}`);
-    return retryCount * 1000;
-  },
-  retryCondition: () => {
-    return true;
-  }
-});
+
 const urlStep = 400;
 const contractAddress: string = '0x06450dEe7FD2Fb8E39061434BAbCFC05599a6Fb8';
 const contract = new ethers.Contract(contractAddress, abi, provider);
@@ -99,10 +90,10 @@ async function openDB() {
       baseFeePerGas INTEGER NOT NULL,
       gasUsed INTEGER NOT NULL,
       timestamp INTEGER NOT NULL,
-      transactions INTEGER NOT NULL,
       miner TEXT NOT NULL
     )
   `);
+  log('openDB success');
 }
 
 async function getAllEvents() {
@@ -116,7 +107,8 @@ async function getAllEvents() {
   let startBlockNumber = maxBlockNumber
     ? maxBlockNumber + 1
     : xenStartBlockNumber;
-  for (; startBlockNumber < currentBlockNumber; startBlockNumber += step + 1) {
+  log(`startBlockNumber: ${startBlockNumber}`);
+  for (; startBlockNumber < currentBlockNumber; ) {
     const targetBlockNumber =
       startBlockNumber + step > currentBlockNumber
         ? currentBlockNumber
@@ -188,11 +180,12 @@ async function getAllEvents() {
       }
     });
     await insertRankEvents(_rankEvents);
-    console.log(
-      `startBlockNumber: ${startBlockNumber}, startBlockNumber: ${targetBlockNumber}, percent: ${
-        startBlockNumber - xenStartBlockNumber
-      }/${currentBlockNumber - xenStartBlockNumber}`
+    printProgressBar(
+      'getAllEvents',
+      startBlockNumber - xenStartBlockNumber,
+      currentBlockNumber - xenStartBlockNumber
     );
+    startBlockNumber += step + 1;
   }
 }
 
@@ -223,7 +216,7 @@ async function insertRankEvents(
     if (err) {
       console.error('Error during commit', err.message);
     } else {
-      console.log('Data inserted successfully');
+      log('Data inserted successfully');
     }
   });
 }
@@ -253,7 +246,7 @@ async function insertMintEvents(
     if (err) {
       console.error('Error during commit', err.message);
     } else {
-      console.log('Data inserted successfully');
+      log('Data inserted successfully');
     }
   });
 }
@@ -285,7 +278,39 @@ async function insertTransactions(
     if (err) {
       console.error('Error during commit', err.message);
     } else {
-      console.log('Data inserted successfully');
+      log('Data inserted successfully');
+    }
+  });
+}
+
+async function insertBlocks(
+  blocks: {
+    number: number;
+    baseFeePerGas: number;
+    gasUsed: number;
+    timestamp: number;
+    miner: string;
+  }[]
+) {
+  await db!.run('BEGIN TRANSACTION');
+  const stmt = await db!.prepare(
+    'INSERT INTO blocks (number, baseFeePerGas, gasUsed, timestamp, miner) VALUES (?, ?, ?, ?, ?)'
+  );
+  blocks.forEach(async (block) => {
+    await stmt.run(
+      block.number,
+      block.baseFeePerGas,
+      block.gasUsed,
+      block.timestamp,
+      block.miner
+    );
+  });
+  await stmt.finalize();
+  await db!.run('COMMIT', (err: any) => {
+    if (err) {
+      console.error('Error during commit', err.message);
+    } else {
+      log('Data inserted successfully');
     }
   });
 }
@@ -297,6 +322,7 @@ async function getAllTransactions() {
     LEFT JOIN transactions t ON r.transactionHash = t.hash
     WHERE t.hash IS NULL;
   `);
+  log(`getRankEventTransactions`);
   await getTransactions(rankEvents);
   const mintEvents = await db!.all(`
     SELECT m.*
@@ -304,11 +330,31 @@ async function getAllTransactions() {
     LEFT JOIN transactions t ON m.transactionHash = t.hash
     WHERE t.hash IS NULL;
   `);
+  log(`getMintEventTransactions`);
   await getTransactions(mintEvents);
 }
 
+async function getAllBlocks() {
+  const rankEvents = await db!.all(`
+    SELECT r.*
+    FROM rankEvents r
+    LEFT JOIN blocks t ON r.blockNumber = t.number
+    WHERE t.number IS NULL;
+  `);
+  log(`getRankEventBlocks`);
+  await getBlocks(rankEvents);
+  const mintEvents = await db!.all(`
+    SELECT m.*
+    FROM mintEvents m
+    LEFT JOIN blocks t ON m.blockNumber = t.number
+    WHERE t.number IS NULL;
+  `);
+  log(`getMintEventBlocks`);
+  await getBlocks(mintEvents);
+}
+
 async function getTransactions(events: { transactionHash: string }[]) {
-  for (let i = 0; i < events.length;) {
+  for (let i = 0; i < events.length; ) {
     const datas: any[] = [];
     for (let j = 0; j < urlStep && i + j < events.length; j++) {
       datas.push({
@@ -336,36 +382,61 @@ async function getTransactions(events: { transactionHash: string }[]) {
           };
         })
       );
-    } catch (error) {
-      console.log(error);
+    } catch (error: any) {
+      log(`error ${error.toString().substring(30)}`);
       continue;
     }
-    console.log(`percent: ${i}/${events.length}`);
     i += urlStep;
+    printProgressBar('getTransactions', i, events.length);
   }
 }
 
-async function getBlocks(blockNumbers: number[]) {
-  const skip = 100;
-  const blocks = [];
-  for (let i = 0; i < blockNumbers.length; i += skip) {
+async function getBlocks(events: { blockNumber: number }[]) {
+  const blockNumbers: number[] = [];
+  for (let i = 0; i < events.length; i++) {
+    if (
+      i == events.length - 1 ||
+      events[i].blockNumber != events[i + 1].blockNumber
+    ) {
+      blockNumbers.push(events[i].blockNumber);
+    }
+  }
+  for (let i = 0; i < blockNumbers.length; ) {
     const datas: any[] = [];
-    for (let j = 0; j < skip && i + j < blockNumbers.length; j++) {
+    for (let j = 0; j < urlStep && i + j < blockNumbers.length; j++) {
       datas.push({
         jsonrpc: '2.0',
         id: 0,
         method: 'eth_getBlockByNumber',
-        params: [`0x${blockNumbers[i].toString(16)}`, false]
+        params: [`0x${blockNumbers[i + j].toString(16)}`, false]
       });
     }
-    blocks.push(...(await axios.post('', datas)).data);
+    try {
+      const blocks: any[] = (await axiosInstance.post('', datas)).data;
+      await insertBlocks(
+        blocks.map((block) => {
+          return {
+            number: BigNumber.from(block.result.number).toNumber(),
+            baseFeePerGas: BigNumber.from(
+              block.result.baseFeePerGas
+            ).toNumber(),
+            gasUsed: BigNumber.from(block.result.gasUsed).toNumber(),
+            timestamp: BigNumber.from(block.result.timestamp).toNumber(),
+            transactions: block.result.transactions.length,
+            miner: block.result.miner
+          };
+        })
+      );
+    } catch (error: any) {
+      log(`error ${error.toString().substring(30)}`);
+      continue;
+    }
+    i += urlStep;
+    printProgressBar('getBlocks', i, blockNumbers.length);
   }
-  return blocks;
 }
 
 async function logDay() {
-  const xenStartTimeStamp = (await provider.getBlock(xenStartBlockNumber))
-    .timestamp;
   let dayMap: {
     [day: string]: {
       rankAmount: number;
@@ -373,13 +444,18 @@ async function logDay() {
       rewardAmount: number;
     };
   } = {};
-  const rankEvents = await db!.all(`SELECT * FROM rankEvents;`);
-  const mintEvents = await db!.all(`SELECT * FROM mintEvents;`);
+  log(`logRankEvents`);
+  const rankEvents = await db!.all(`
+    SELECT r.rank, r.term, r.amount, b.timestamp
+    FROM rankEvents AS r
+    INNER JOIN blocks AS b
+    ON r.blockNumber = b.number
+    INNER JOIN transactions AS t
+    ON r.transactionHash = t.hash;
+  `);
   rankEvents.forEach((rankEvent) => {
-    const rankTimeStamp =
-      xenStartTimeStamp + (rankEvent.blockNumber - xenStartTimeStamp) * 12;
-    const rankDay = new Date(rankTimeStamp * 1000).toLocaleDateString();
-    const termTimeStamp = rankTimeStamp + rankEvent.term * 60 * 60 * 24;
+    const rankDay = new Date(rankEvent.timestamp * 1000).toLocaleDateString();
+    const termTimeStamp = rankEvent.timestamp + rankEvent.term * 60 * 60 * 24;
     const termDay = new Date(termTimeStamp * 1000).toLocaleDateString();
     if (!dayMap[rankDay]) {
       dayMap[rankDay] = {
@@ -400,10 +476,17 @@ async function logDay() {
       dayMap[termDay].termAmount += rankEvent.amount;
     }
   });
+  log(`logMintEvents`);
+  const mintEvents = await db!.all(`
+    SELECT m.rewardAmount, b.timestamp
+    FROM mintEvents AS m
+    INNER JOIN blocks AS b
+    ON m.blockNumber = b.number
+    INNER JOIN transactions AS t
+    ON m.transactionHash = t.hash;
+  `);
   mintEvents.forEach((mintEvent) => {
-    const mintTimeStamp =
-      xenStartTimeStamp + (mintEvent.blockNumber - xenStartBlockNumber) * 12;
-    const mintDay = new Date(mintTimeStamp * 1000).toLocaleDateString();
+    const mintDay = new Date(mintEvent.timestamp * 1000).toLocaleDateString();
     if (!dayMap[mintDay]) {
       dayMap[mintDay] = {
         rankAmount: 0,
@@ -414,6 +497,7 @@ async function logDay() {
       dayMap[mintDay].rewardAmount += mintEvent.rewardAmount;
     }
   });
+  log(`logEvents`);
   dayMap = Object.fromEntries(
     Object.entries(dayMap).sort(
       (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()
@@ -438,10 +522,27 @@ function computeAddress(senderAddress: string, nonce: string): string {
 
 async function main() {
   await openDB();
-  // await getAllEvents();
+  await getAllEvents();
   await getAllTransactions();
-  // await logDay();
+  await getAllBlocks();
+  await logDay();
   await db!.close();
 }
 
 main();
+
+function printProgressBar(name: string, progress: number, total: number) {
+  if (progress > total) {
+    progress = total;
+  }
+  const barLength = 100;
+  const completed = Math.round((progress / total) * barLength);
+  const remaining = barLength - completed;
+  const percentage = ((progress / total) * 100).toFixed(2);
+  const bar = `${name} [${'#'.repeat(completed)}${'-'.repeat(
+    remaining
+  )}] ${percentage}% ${progress}/${total} \n`;
+  process.stdout.clearLine(0);
+  process.stdout.cursorTo(0);
+  process.stdout.write(bar);
+}
